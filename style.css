@@ -1,0 +1,316 @@
+:root {
+    /* Main Theme Colors */
+    --bg-color: #0f1923;
+    --panel-color: #1c2533;
+    --radar-green: #00ff88;
+    --ocean-blue: #1a3c5e;
+    --grid-bg: #000;
+
+    /* State Colors */
+    --hit-red: #ff4655;
+    --miss-white: #ffffff40;
+    --ship-color: #888;
+
+    /* Text & UI Element Colors */
+    --text-light: white;
+    --text-dark: black;
+    --btn-secondary-bg: #444;
+    --ship-btn-bg: #333;
+    --ship-placed-bg: #555;
+    --ship-placed-border: #777;
+
+    /* Hover & Interaction Colors */
+    --hover-valid: rgba(0, 255, 136, 0.5);
+    --hover-invalid: rgba(255, 70, 85, 0.5);
+    --hover-skill: rgba(0, 180, 255, 0.6);
+
+    /* Skill & Animation Colors */
+    --nuke-impact-bg: rgba(255, 255, 150, 0.9);
+    --nuke-flash-start-bg: white;
+    --nuke-flash-mid-bg: rgba(255, 255, 0, 0.9);
+    --nuke-flash-end-bg: rgba(255, 165, 0, 0.6);
+    --meteor-impact-bg: rgba(255, 69, 0, 0.8);
+    --meteor-glow-shadow: rgba(255, 69, 0, 0.5);
+    --meteor-glow-shadow-intense: rgba(255, 69, 0, 1);
+    --jormungandr-sweep-bg: rgba(0, 100, 0, 0.8);
+
+    /* Sizing */
+    --grid-size: 30px;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-light);
+    font-family: 'Courier New', Courier, monospace; /* Tactical font */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin: 0;
+}
+
+.panel {
+    background: var(--panel-color);
+    padding: 2rem;
+    border-radius: 8px;
+    text-align: center;
+    margin-top: 50px;
+    border: 1px solid var(--radar-green);
+}
+
+.highlight { color: var(--radar-green); }
+
+.hidden { display: none !important; }
+
+.coming-soon {
+    color: var(--miss-white);
+    font-style: italic;
+}
+
+.lobby-controls { display: flex; gap: 10px; justify-content: center; align-items: center; }
+
+input { padding: 10px; text-transform: uppercase; font-weight: bold; }
+
+button {
+    padding: 10px 20px;
+    cursor: pointer;
+    font-weight: bold;
+    border: none;
+}
+
+.btn-primary { background: var(--radar-green); color: var(--text-dark); }
+.btn-secondary { background: var(--btn-secondary-bg); color: var(--text-light); }
+
+/* Faction Selection Styles */
+.faction-buttons-wrapper {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.faction-button-container {
+    position: relative; /* Needed for tooltip positioning */
+}
+
+.faction-button-container .btn-secondary,
+.faction-button-container .btn-primary {
+    width: 150px; /* Give buttons a uniform width */
+}
+
+.faction-tooltip {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    bottom: 110%; /* Position above the button */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 180px;
+    background-color: var(--panel-color);
+    border: 1px solid var(--radar-green);
+    padding: 10px;
+    border-radius: 5px;
+    text-align: left;
+    font-size: 0.8em;
+    transition: opacity 0.2s, visibility 0.2s;
+    z-index: 100;
+}
+.faction-button-container:hover .faction-tooltip { visibility: visible; opacity: 1; }
+.faction-tooltip p { margin: 2px 0; }
+
+/* Placement Panel Styles */
+#placement-panel {
+    margin-top: 30px;
+    width: 80%;
+    max-width: 800px;
+}
+
+.placement-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-bottom: 20px;
+    align-items: center;
+}
+
+#ship-selection {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.ship-button {
+    padding: 8px 15px;
+    background-color: var(--ship-btn-bg);
+    color: var(--text-light);
+    border: 1px solid var(--radar-green);
+    cursor: pointer;
+}
+.ship-button.selected { background-color: var(--radar-green); color: var(--text-dark); }
+.ship-button.placed { background-color: var(--ship-placed-bg); border-color: var(--ship-placed-border); cursor: not-allowed; opacity: 0.7; }
+
+#game-code-display {
+    color: var(--radar-green);
+    font-weight: bold;
+    margin: 0 5px;
+    letter-spacing: 5px;
+}
+
+#game-arena {
+    display: flex;
+    gap: 50px;
+    margin-top: 30px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(10, var(--grid-size));
+    grid-template-rows: repeat(10, var(--grid-size));
+    gap: 2px;
+    background: var(--grid-bg);
+    border: 2px solid var(--radar-green);
+}
+
+.cell {
+    width: var(--grid-size);
+    height: var(--grid-size);
+    background-color: var(--ocean-blue);
+    cursor: crosshair;
+}
+
+.cell.ship { background-color: var(--ship-color); } /* Visible only on own board */
+
+.grid.disabled {
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+.cell.hover-valid { background-color: var(--hover-valid); } /* Greenish for valid hover */
+.cell.hover-invalid { background-color: var(--hover-invalid); } /* Reddish for invalid hover */
+
+.cell.hover-skill { background-color: var(--hover-skill); } /* Cyan for skill targeting */
+
+/* New impact effects for ultimate skills */
+.cell.nuke-impact {
+    background-color: var(--nuke-impact-bg) !important; /* Brighter yellow flash */
+    animation: nukeFlash 0.8s ease-out forwards;
+    z-index: 20; /* Ensure flash is on top */
+}
+
+@keyframes nukeFlash {
+    0% { background-color: var(--nuke-flash-start-bg); transform: scale(0.2); opacity: 1; border-radius: 50%; }
+    50% { background-color: var(--nuke-flash-mid-bg); transform: scale(1.5); }
+    100% { background-color: var(--nuke-flash-end-bg); transform: scale(1); opacity: 0; border-radius: 0; }
+}
+
+.cell.meteor-impact {
+    background-color: var(--meteor-impact-bg) !important; /* Orange-red fiery impact */
+    animation: meteorGlow 0.4s ease-out forwards;
+}
+
+@keyframes meteorGlow {
+    0% { box-shadow: 0 0 5px var(--meteor-glow-shadow); }
+    50% { box-shadow: 0 0 20px var(--meteor-glow-shadow-intense); }
+    100% { box-shadow: 0 0 5px var(--meteor-glow-shadow); }
+}
+
+.cell.jormungandr-sweep {
+    background-color: var(--jormungandr-sweep-bg) !important; /* Dark green, deep ocean feel */
+    animation: sweepEffect 0.6s ease-out forwards;
+}
+
+@keyframes sweepEffect {
+    0% { transform: scale(0.8); opacity: 0.5; }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+
+
+
+/* Game Over Panel Styles */
+#game-over-message.win {
+    color: var(--radar-green);
+}
+
+#game-over-message.lose {
+    color: var(--hit-red);
+}
+/* Add to style.css */
+
+@keyframes shake {
+  0% { transform: translate(1px, 1px) rotate(0deg); }
+  10% { transform: translate(-1px, -2px) rotate(-1deg); }
+  20% { transform: translate(-3px, 0px) rotate(1deg); }
+  30% { transform: translate(3px, 2px) rotate(0deg); }
+  40% { transform: translate(1px, -1px) rotate(1deg); }
+  50% { transform: translate(-1px, 2px) rotate(-1deg); }
+  60% { transform: translate(-3px, 1px) rotate(0deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
+}
+
+.cell.hit {
+    background-color: var(--hit-red) !important;
+    animation: shake 0.5s; /* Trigger shake on hit */
+    box-shadow: 0 0 10px var(--hit-red); /* Glowing effect */
+    z-index: 10;
+}
+
+.cell.miss {
+    background-color: var(--miss-white) !important;
+}
+
+/* Skills Panel */
+#skills-panel {
+    background: var(--panel-color);
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--radar-green);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+    width: 220px; /* Give it a fixed width */
+}
+
+#skills-panel h3 {
+    margin: 0 0 10px 0;
+    color: var(--radar-green);
+    text-transform: uppercase;
+}
+
+#energy-display {
+    font-weight: bold;
+    font-size: 1.1rem;
+    margin-bottom: 5px;
+    color: var(--text-light);
+}
+
+#skill-buttons-container {
+    display: flex;
+    gap: 5px;
+    justify-content: center;
+}
+
+#skills-panel button {
+    flex-grow: 1;
+    background: var(--btn-secondary-bg);
+    color: var(--text-light);
+    border: 1px solid var(--text-light);
+    font-size: 0.8em;
+    padding: 8px 5px;
+}
+
+#skills-panel button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    border-color: var(--miss-white);
+}
+
+#skills-panel button.active {
+    background: var(--radar-green);
+    color: var(--text-dark);
+    border-color: var(--radar-green);
+    box-shadow: 0 0 8px var(--radar-green);
+}

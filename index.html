@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Radar Battleship | Multiplayer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <header>
+        <h1>Battleship<span class="highlight">RADAR</span></h1>
+        <div id="status-msg">Status: Disconnected</div>
+    </header>
+
+    <div id="mode-selection-panel" class="panel">
+        <h1>Select Game Mode</h1>
+        <div class="lobby-controls">
+            <button class="btn-primary" onclick="selectGameMode('normal')">Normal Mode</button>
+            <button class="btn-secondary" onclick="selectGameMode('fantasy')">Fantasy Mode</button>
+        </div>
+    </div>
+
+    <div id="lobby" class="panel hidden">
+        <h2>Lobby</h2>
+        <div class="lobby-controls">
+            <button onclick="createGame()" class="btn-primary">Create New Game</button>
+            <span class="divider">OR</span>
+            <input type="text" id="join-input" placeholder="Enter 5-Char Code" maxlength="5">
+            <button onclick="joinGame()" class="btn-secondary">Join Game</button>
+            <span class="divider">OR</span>
+            <button onclick="startOfflineGame()" class="btn-primary">Play Offline vs Robot</button>
+        </div>
+        <div id="room-display" class="hidden">
+            Share this code: <span id="lobby-game-code">Loading...</span>
+            <p>Waiting for opponent...</p>
+        </div>
+    </div>
+
+    <div id="placement-panel" class="panel hidden">
+        <h2>Place Your Ships</h2>
+        <p>Game Code: <span id="placement-game-code" class="highlight"></span></p>
+        <div id="faction-selection-container" class="hidden" style="margin-bottom: 20px;">
+            <h3>Choose Your Faction</h3>
+            <div class="faction-buttons-wrapper">
+                <div class="faction-button-container">
+                    <button data-faction="military" class="btn-secondary" onclick="selectFaction('military')">🪖Military</button>
+                    <div class="faction-tooltip">
+                        <p><strong>Attack:</strong> Crossfire (+)</p>
+                        <p><strong>Utility:</strong> Radar Scan (5x5)</p>
+                        <p><strong>Ultimate:</strong> Tactical Nuke (5x5)</p>
+                    </div>
+                </div>
+                <div class="faction-button-container">
+                    <button data-faction="mages" class="btn-secondary" onclick="selectFaction('mages')">🧙‍♂️ Mages</button>
+                    <div class="faction-tooltip">
+                        <p><strong>Attack:</strong> Fireball (2x2)</p>
+                        <p><strong>Utility:</strong> Crystal Ball (1 Tile)</p>
+                        <p><strong>Ultimate:</strong> Armageddon (Random)</p>
+                    </div>
+                </div>
+                <div class="faction-button-container">
+                    <button data-faction="vikings" class="btn-secondary" onclick="selectFaction('vikings')">🪓 Vikings</button>
+                    <div class="faction-tooltip">
+                        <p><strong>Attack:</strong> Berserker's Sacrifice</p>
+                        <p><strong>Utility:</strong> Odin's Ravens</p>
+                        <p><strong>Ultimate:</strong> Jormungandr's Rage</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <p id="placement-message">Select a ship and click on your board to place it.</p>
+        <div class="placement-controls">
+            <div id="ship-selection">
+                </div>
+            <button onclick="randomizePlayerShips()" class="btn-secondary">🎲 Randomize Board</button>
+            <button onclick="rotateShip()" class="btn-secondary">Rotate Ship (Current: <span id="orientation-display">Horizontal</span>)</button>
+            <button onclick="finishPlacement()" id="finish-placement-btn" class="btn-primary" disabled>Start Battle!</button>
+        </div>
+        <div class="board-container">
+            <h3>Your Fleet</h3>
+            <div id="my-placement-board" class="grid"></div>
+        </div>
+        <div id="waiting-for-opponent" class="hidden">
+            <p>Waiting for opponent to finish placing ships...</p>
+        </div>
+    </div>
+
+
+    <div id="game-arena" class="hidden">
+        <div class="board-container">
+            <h3>Your Fleet</h3>
+            <div id="my-board" class="grid"></div>
+            <div id="skills-panel" class="hidden" style="margin: 15px auto 0;">
+                <h3 id="skills-header">Skills</h3>
+                <div id="energy-display">Energy: 0</div>
+                <div id="skill-buttons-container">
+                    <button id="skill-attack-btn" onclick="activateSkill('attack')">Attack</button>
+                    <button id="skill-utility-btn" onclick="activateSkill('utility')">Utility</button>
+                    <button id="skill-ultimate-btn" onclick="activateSkill('ultimate')">Ultimate</button>
+                </div>
+            </div>
+        </div>
+        <div class="board-container">
+            <h3>Enemy Waters <span id="turn-indicator">(Wait)</span></h3>
+            <div id="enemy-board" class="grid"></div>
+        </div>
+    </div>
+
+    <div id="game-over-panel" class="panel hidden">
+        <h2 id="game-over-message"></h2>
+        <button onclick="window.location.reload()" class="btn-primary">Play Again</button>
+    </div>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
