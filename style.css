@@ -156,8 +156,13 @@ button {
     letter-spacing: 5px;
 }
 
+.board-container {
+    position: relative; /* For positioning child elements like the UAV panel */
+}
+
 #game-arena {
     display: flex;
+    position: relative; /* For status timers */
     gap: 50px;
     margin-top: 30px;
     flex-wrap: wrap;
@@ -190,7 +195,11 @@ button {
 .cell.hover-valid { background-color: var(--hover-valid); } /* Greenish for valid hover */
 .cell.hover-invalid { background-color: var(--hover-invalid); } /* Reddish for invalid hover */
 
-.cell.hover-skill { background-color: var(--hover-skill); } /* Cyan for skill targeting */
+.cell.hover-skill {
+    background-color: var(--hover-skill); /* Cyan for skill targeting */
+    animation: pulse 1.5s infinite;
+    box-shadow: 0 0 0 0 var(--hover-skill);
+}
 
 /* New impact effects for ultimate skills */
 .cell.nuke-impact {
@@ -226,6 +235,11 @@ button {
     100% { transform: scale(1); opacity: 1; }
 }
 
+/* Game Arena Shake for Ultimates */
+#game-arena.screen-shake-effect {
+    animation: screen-shake 0.5s ease-in-out;
+}
+
 
 
 
@@ -238,6 +252,25 @@ button {
     color: var(--hit-red);
 }
 /* Add to style.css */
+
+@keyframes screen-shake {
+  0%, 100% { transform: translate(0, 0); }
+  10%, 30%, 50%, 70%, 90% { transform: translate(-5px, 5px); }
+  20%, 40%, 60%, 80% { transform: translate(5px, -5px); }
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 var(--hover-skill);
+    }
+    70% {
+        box-shadow: 0 0 10px 15px rgba(0, 180, 255, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(0, 180, 255, 0);
+    }
+}
+
 
 @keyframes shake {
   0% { transform: translate(1px, 1px) rotate(0deg); }
@@ -260,8 +293,49 @@ button {
 .cell.miss {
     background-color: var(--miss-white) !important;
 }
-
 /* Skills Panel */
+
+/* UAV Status Panel */
+#ship-status-panel {
+    position: absolute;
+    bottom: 10px;
+    right: -230px; /* Position it outside the board container to the right */
+    width: 200px;
+    background: rgba(28, 37, 51, 0.85); /* Semi-transparent panel color */
+    border: 1px solid var(--radar-green);
+    border-radius: 5px;
+    padding: 10px;
+    font-size: 0.8em;
+    color: var(--radar-green);
+    backdrop-filter: blur(3px);
+    z-index: 10;
+    overflow: hidden; /* for scanline */
+}
+
+#ship-status-panel h4 {
+    margin: 0 0 5px 0;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+#ship-status-panel::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: var(--radar-green);
+    animation: scanline 4s linear infinite;
+    box-shadow: 0 0 10px var(--radar-green);
+}
+
+@keyframes scanline {
+    0% { transform: translateY(-10px); }
+    100% { transform: translateY(150px); } /* Ensure it goes past the bottom */
+}
+
 #skills-panel {
     background: var(--panel-color);
     padding: 1rem;
@@ -272,6 +346,7 @@ button {
     gap: 10px;
     text-align: center;
     width: 220px; /* Give it a fixed width */
+    position: relative; /* For the debuff overlay */
 }
 
 #skills-panel h3 {
@@ -313,4 +388,130 @@ button {
     color: var(--text-dark);
     border-color: var(--radar-green);
     box-shadow: 0 0 8px var(--radar-green);
+}
+
+/* Raven Debuff Overlay */
+#skill-debuff-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: radial-gradient(ellipse at center, rgba(50, 0, 80, 0) 50%, rgba(50, 0, 80, 0.4) 100%);
+    pointer-events: none;
+    z-index: 99;
+    animation: pulse-dark 2s infinite ease-in-out; /* Re-using this animation for a subtle pulse */
+}
+
+@keyframes pulse-dark { 0%, 100% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.1); opacity: 0.8; } }
+
+/* NEW: Cooldown visual for skill buttons */
+#skills-panel button.on-cooldown {
+    position: relative; /* Context for the overlay */
+    background: #222 !important;
+    color: #777 !important;
+    cursor: not-allowed;
+    overflow: hidden; /* To contain the rift effect */
+}
+
+#skills-panel button.on-cooldown::after {
+    content: attr(data-cooldown);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    font-size: 1.5em;
+    font-weight: bold;
+    z-index: 2; /* To be on top of the rift */
+}
+
+/* Specific effect for Mage Rift */
+#skill-utility-btn.on-cooldown::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 120%;
+    height: 150%;
+    background: radial-gradient(ellipse, transparent, #500080, #a020f0);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: rift-pulse 2s infinite ease-in-out;
+    z-index: 1;
+    opacity: 0.7;
+}
+
+@keyframes rift-pulse {
+    0% {
+        transform: translate(-50%, -50%) scale(0.9);
+        box-shadow: 0 0 5px #a020f0, 0 0 10px #a020f0;
+    }
+    50% {
+        transform: translate(-50%, -50%) scale(1.1);
+        box-shadow: 0 0 15px #c060ff, 0 0 25px #c060ff;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(0.9);
+        box-shadow: 0 0 5px #a020f0, 0 0 10px #a020f0;
+    }
+}
+
+/* Status Timers */
+#status-timers-container {
+    position: absolute;
+    top: 110px; /* Position above the game arena */
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 20px;
+    z-index: 50;
+    pointer-events: none;
+}
+
+.status-timer {
+    background: rgba(0, 0, 0, 0.7);
+    color: var(--hit-red);
+    padding: 5px 15px;
+    border-radius: 5px;
+    border: 1px solid var(--hit-red);
+    font-weight: bold;
+    text-shadow: 0 0 5px var(--hit-red);
+    white-space: nowrap;
+}
+
+/* NEW: Viking Raven Storm Overlay */
+#enemy-board-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 25;
+    border-radius: 2px; /* Match grid border */
+}
+
+#enemy-board-overlay.raven-storm::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle, rgba(50, 0, 80, 0.1) 0%, rgba(50, 0, 80, 0.7) 80%);
+    animation: raven-fade 4s ease-out forwards;
+}
+
+@keyframes raven-fade {
+    0% { opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
 }

@@ -26,10 +26,11 @@ let isMyTurn = false;
 let gameMode = 'normal'; // 'normal' or 'fantasy'
 let playerFaction = ''; // 'military', 'mages', 'vikings'
 let playerEnergy = 0;
-const skillCosts = { attack: 3, utility: 4, ultimate: 8 };
+const skillCosts = { attack: 3, utility: 2, ultimate: 9 };
 let activeSkill = null;
 let previousTurn = null; // Moved to top for proper initialization
 let vikingUltMode = 'rows_and_cols';
+let lastUAVReportHTML = ''; // For persistent UAV panel
 let gameState = {}; // Cache the latest game state
 
 // Placement State
@@ -118,6 +119,13 @@ function generateShipObjects() {
     return shipObjects;
 }
 
+// --- HELPER: CHECK IF A SHIP CAN BE PLACED (for AI) ---
+function isPlacementPossible(startIndex, length, orientation, occupiedTiles) {
+    const shipCells = getShipCells(startIndex, length, orientation); // This already checks boundaries
+    if (!shipCells) return false;
+    // Check if any of the required cells have already been shot at
+    return shipCells.every(cell => !occupiedTiles.includes(cell));
+}
 window.randomizePlayerShips = () => {
     // 1. Reset everything
     placedShips = [];
@@ -146,6 +154,14 @@ window.selectGameMode = (mode) => {
 
 // --- UI FUNCTIONS ---
 
+function triggerScreenShake() {
+    const arena = document.getElementById('game-arena');
+    arena.classList.add('screen-shake-effect');
+    setTimeout(() => {
+        arena.classList.remove('screen-shake-effect');
+    }, 500); // Duration of the animation in style.css
+}
+
 // 1. Create Game
 window.createGame = () => {
     gameCode = Math.random().toString(36).substring(2, 7).toUpperCase();
@@ -155,6 +171,7 @@ window.createGame = () => {
     set(ref(db, 'games/' + gameCode), {
         gameMode: gameMode,
         status: 'waiting',
+        roundCount: 0,
         turn: 'host',
         host: {
             board: [],
@@ -163,6 +180,8 @@ window.createGame = () => {
             misses: [],
             ready: false,
             faction: '',
+            uavActive: false,
+            riftCooldown: 0,
             energy: 0,
         }, // No consecutiveMisses needed anymore
         guest: {
@@ -172,6 +191,8 @@ window.createGame = () => {
             misses: [],
             ready: false,
             faction: '',
+            uavActive: false,
+            riftCooldown: 0,
             energy: 0,
         },
     });
@@ -489,6 +510,8 @@ function startGameUI() {
     myShips = [...placedShips]; // Lock in ships
     isPlacementPhase = false;
 
+    document.getElementById('ship-status-panel').classList.add('hidden'); // Ensure UAV panel is hidden on start
+
     if (isOfflineMode) {
         const robotData = generateShipsForRobot();
         robotShips = robotData.board;
@@ -499,6 +522,7 @@ function startGameUI() {
         const robotFaction = factions[Math.floor(Math.random() * factions.length)];
 
         gameState = {
+            roundCount: 0,
             host: {
                 board: myShips,
                 shipObjects: placedShipObjects,
@@ -506,6 +530,8 @@ function startGameUI() {
                 misses: [], // robot misses on me
                 faction: playerFaction,
                 energy: 1,
+                uavActive: false,
+                riftCooldown: 0,
             },
             guest: { // The robot is the guest
                 board: robotShips,
@@ -514,6 +540,8 @@ function startGameUI() {
                 misses: [], // my misses on robot
                 faction: robotFaction,
                 energy: 0,
+                uavActive: false,
+                riftCooldown: 0,
             },
             turn: 'host',
             gameMode: gameMode,
@@ -586,12 +614,29 @@ function renderBoard(elementId, ships, hits, misses, isMine) {
 
 // --- SHOOTING LOGIC ---
 
+function updateStatusTimers() {
+    const container = document.getElementById('status-timers-container');
+    container.innerHTML = ''; // Clear existing timers
+    const myData = gameState[playerRole] || {};
+    const opponentRole = playerRole === 'host' ? 'guest' : 'host';
+    const opponentData = gameState[opponentRole] || {};
+
+    // Timer for when I am disabled
+    if (myData.skillsDisabled && myData.skillsDisabled > 0) {
+        container.innerHTML += `<div class="status-timer">YOUR SKILLS DISABLED: ${myData.skillsDisabled} TURN(S)</div>`;
+    }
+    // Timer for when my opponent is disabled
+    if (opponentData.skillsDisabled && opponentData.skillsDisabled > 0) {
+        container.innerHTML += `<div class="status-timer">ENEMY SKILLS DISABLED: ${opponentData.skillsDisabled} TURN(S)</div>`;
+    }
+}
 window.activateSkill = (skillType) => {
     if (!isMyTurn || playerEnergy < skillCosts[skillType]) return;
 
     const nonTargetedSkills = {
-        mages: ['utility', 'ultimate'], // Crystal Ball, Armageddon
-        vikings: ['attack', 'utility'] // Berserker's Sacrifice, Odin's Ravens
+        mages: ['utility', 'ultimate'], // Temporal Rift, Armageddon
+        vikings: ['attack', 'utility'], // Berserker's Sacrifice, Odin's Ravens
+        military: ['utility'] // UAV Recon Drone
     };
 
     // --- NEW: Viking Ultimate Mode Cycling ---
@@ -673,7 +718,7 @@ function useSkill(skillType, targetIndex) { // targetIndex can be undefined
     switch (playerFaction) {
         case 'military':
             if (skillType === 'attack') useMilitaryCrossfire(targetIndex, updates);
-            else if (skillType === 'utility') useMilitaryRadar(targetIndex, updates); // Now passes updates
+            else if (skillType === 'utility') useMilitaryUAV(updates);
             else if (skillType === 'ultimate') {
                 useMilitaryNuke(targetIndex, updates);
                 isUltimateAnimating = true;
@@ -681,7 +726,7 @@ function useSkill(skillType, targetIndex) { // targetIndex can be undefined
             break;
         case 'mages':
             if (skillType === 'attack') useMageFireball(targetIndex, updates);
-            else if (skillType === 'utility') useMageCrystalBall(updates);
+            else if (skillType === 'utility') useMageTemporalRift(updates);
             else if (skillType === 'ultimate') {
                 // Armageddon is special-cased to handle its own async update after animation
                 useMageArmageddon(updates);
@@ -731,17 +776,43 @@ function useMilitaryCrossfire(index, updates) {
     updates[`${opponentRole}/misses`] = currentMisses;
 }
 
-function useMilitaryRadar(index, updates) {
-    const targets = getSkillTargets('utility', 'military', index);
+function getEnemyShipStatus() {
     const opponentRole = playerRole === 'host' ? 'guest' : 'host';
-    const opponentBoard = gameState[opponentRole].board;
+    const opponentData = gameState[opponentRole];
+    if (!opponentData || !opponentData.shipObjects) return [];
 
-    const foundShip = targets.some(target => opponentBoard.includes(target));
+    const shipNames = { 5: "Carrier", 4: "Battleship", 3: "Cruiser", 2: "Destroyer" };
+    const shipCounts = { 5: 0, 4: 0, 3: 0, 2: 0 };
+    const shipReports = [];
 
-    // Only show alert to the human player, not for the robot's move.
-    if (playerRole === 'host') { // In offline mode, player is always host. Robot will be temp 'guest'.
-        alert(`Radar Scan Result: Ship part ${foundShip ? 'DETECTED' : 'NOT DETECTED'} in the scanned 5x5 area.`);
-    }
+    // Create a copy and sort to ensure consistent order (e.g., Carrier, Battleship, etc.)
+    const sortedShips = [...opponentData.shipObjects].sort((a, b) => b.length - a.length);
+
+    sortedShips.forEach(ship => {
+        const remainingTiles = ship.indices.filter(index => !(opponentData.hits || []).includes(index)).length;
+        const shipName = shipNames[ship.length];
+        let reportName = shipName;
+
+        const totalOfType = opponentData.shipObjects.filter(s => s.length === ship.length).length;
+        if (totalOfType > 1) {
+            shipCounts[ship.length]++;
+            reportName = `${shipName} #${shipCounts[ship.length]}`;
+        }
+
+        shipReports.push({
+            name: reportName,
+            remaining: remainingTiles,
+            total: ship.length
+        });
+    });
+
+    return shipReports;
+}
+
+function useMilitaryUAV(updates) {
+    // This skill is now purely informational for the user.
+    // It enables the persistent panel.
+    updates[`${playerRole}/uavActive`] = true;
 }
 
 function useMilitaryNuke(index, updates) {
@@ -752,6 +823,8 @@ function useMilitaryNuke(index, updates) {
 
     const targets = getSkillTargets('ultimate', 'military', index);
     const enemyBoard = document.getElementById('enemy-board');
+
+    triggerScreenShake();
 
 
     // Apply temporary visual effect
@@ -820,7 +893,7 @@ function useMageFireball(index, updates) {
     updates[`${opponentRole}/misses`] = currentMisses;
 }
 
-function useMageCrystalBall(updates) {
+function useMageTemporalRift(updates) {
     const opponentRole = playerRole === 'host' ? 'guest' : 'host';
     const opponentData = gameState[opponentRole];
     const opponentBoard = opponentData.board;
@@ -835,6 +908,12 @@ function useMageCrystalBall(updates) {
         updates[`${opponentRole}/hits`] = newHits;
     }
     // If no unhit tiles, the skill does nothing but still costs energy and a turn.
+
+    // Mage keeps the turn
+    updates['turn'] = playerRole;
+
+    // NEW: Set the skill on cooldown for 3 turns (current extra, opponent's, your next)
+    updates[`${playerRole}/riftCooldown`] = 3;
 }
 
 function calculateMageArmageddon() {
@@ -933,6 +1012,8 @@ function useMageArmageddon(updates) {
     const opponentRole = playerRole === 'host' ? 'guest' : 'host';
     const { finalHits, finalMisses, animationTargets } = calculateMageArmageddon();
 
+    triggerScreenShake();
+
     // Add final results to the updates object that already contains energy/turn changes
     updates[`${opponentRole}/hits`] = finalHits;
     updates[`${opponentRole}/misses`] = finalMisses;
@@ -995,6 +1076,19 @@ function useVikingRavens(updates) {
         updates[`${opponentRole}/misses`] = [...(opponentData.misses || []), ...tilesToReveal];
     }
 
+    // NEW: Debuff the opponent
+    updates[`${opponentRole}/skillsDisabled`] = 2; // Debuff for 2 of their turns
+
+    // NEW: Client-side visual effect for the player who used the skill
+    const overlay = document.getElementById('enemy-board-overlay');
+    if (overlay) {
+        overlay.classList.add('raven-storm');
+        overlay.classList.remove('hidden');
+        setTimeout(() => {
+            overlay.classList.add('hidden');
+            overlay.classList.remove('raven-storm');
+        }, 4000); // Match animation duration + buffer
+    }
 }
 
 function useVikingJormungandr(index, updates) {
@@ -1005,6 +1099,8 @@ function useVikingJormungandr(index, updates) {
 
     const targets = getSkillTargets('ultimate', 'vikings', index);
     const enemyBoard = document.getElementById('enemy-board');
+
+    triggerScreenShake();
 
     // Apply temporary visual effect
     enemyBoard.classList.add('disabled'); // Disable interaction during animation
@@ -1104,6 +1200,26 @@ function listenForMoves() {
             // Only update if we're the ones writing the energy
             if (gameMode === 'fantasy' && newTurnPlayer === playerRole) {
                 updates[`${newTurnPlayer}/energy`] = (gameState[newTurnPlayer].energy || 0) + 1;
+                
+                // NEW: Decrement Mage rift cooldown at start of turn
+                if (gameState[newTurnPlayer].faction === 'mages' && gameState[newTurnPlayer].riftCooldown > 0) {
+                    updates[`${newTurnPlayer}/riftCooldown`] = gameState[newTurnPlayer].riftCooldown - 1;
+                }
+            }
+
+            // NEW: Check for and clear the skillsDisabled debuff at the start of the turn
+            const playerBeingDebuffed = gameState[newTurnPlayer] || {};
+            if (playerBeingDebuffed.skillsDisabled && newTurnPlayer === playerRole) {
+                if (playerBeingDebuffed.skillsDisabled > 1) {
+                    updates[`${newTurnPlayer}/skillsDisabled`] = playerBeingDebuffed.skillsDisabled - 1;
+                } else {
+                    updates[`${newTurnPlayer}/skillsDisabled`] = null; // Remove the key
+                }
+            }
+
+            // NEW: Increment round count when turn returns to host
+            if (previousTurn === 'guest' && newTurnPlayer === 'host') {
+                updates['roundCount'] = (gameState.roundCount || 0) + 1;
             }
 
             // Apply burn effect if active for the new turn player
@@ -1158,6 +1274,8 @@ function listenForMoves() {
         updateTurnIndicator();
         if (gameMode === 'fantasy') {
             updateSkillsUI();
+            updateStatusTimers();
+            updateUAVPanel();
         }
         checkGameOver();
     });
@@ -1200,9 +1318,28 @@ function applyOfflineUpdates(updates) {
 
     // Centralized energy gain on turn change for offline mode
     if (gameMode === 'fantasy' && gameState.turn !== oldTurn) {
-        const newTurnPlayerRole = gameState.turn;
-        const newTurnPlayerData = gameState[newTurnPlayerRole];
-        newTurnPlayerData.energy = (newTurnPlayerData.energy || 0) + 1;
+        const newTurnPlayer = gameState.turn;
+        gameState[newTurnPlayer].energy = (gameState[newTurnPlayer].energy || 0) + 1;
+
+        // Decrement Mage rift cooldown
+        const newTurnPlayerData = gameState[newTurnPlayer];
+        if (newTurnPlayerData.faction === 'mages' && newTurnPlayerData.riftCooldown > 0) {
+            newTurnPlayerData.riftCooldown--;
+        }
+
+        // Decrement skill debuff
+        const debuffedPlayer = gameState[newTurnPlayer];
+        if (debuffedPlayer?.skillsDisabled > 0) {
+            debuffedPlayer.skillsDisabled--;
+            if (debuffedPlayer.skillsDisabled === 0) {
+                debuffedPlayer.skillsDisabled = null;
+            }
+        }
+
+        // Increment round count
+        if (oldTurn === 'guest' && newTurnPlayer === 'host') {
+            gameState.roundCount = (gameState.roundCount || 0) + 1;
+        }
     }
 
     // 2. Sync local variables and UI from gameState
@@ -1216,6 +1353,8 @@ function applyOfflineUpdates(updates) {
 
     updateTurnIndicator();
     updateSkillsUI();
+    updateStatusTimers();
+    updateUAVPanel();
     checkGameOver();
 
     // 3. Handle next turn for robot
@@ -1338,21 +1477,26 @@ function robotConsiderAndUseSkill() {
     // Faction-specific targeting and skill adjustments
     switch (robotFaction) {
         case 'military':
-            targetIndex = unshotTiles[Math.floor(Math.random() * unshotTiles.length)];
+            // UAV is non-targeted, so only find a target for attack/ultimate
+            if (skillToUse !== 'utility') {
+                targetIndex = unshotTiles[Math.floor(Math.random() * unshotTiles.length)];
+            }
             break;
         case 'mages':
             if (skillToUse === 'attack') { // Fireball needs a target
                 targetIndex = unshotTiles[Math.floor(Math.random() * unshotTiles.length)];
             }
-            // Crystal Ball and Armageddon are non-targeted
+            // Temporal Rift and Armageddon are non-targeted
             break;
         case 'vikings':
             if (skillToUse === 'ultimate') { // Jormungandr
                 vikingUltMode = 'rows_and_cols'; // Set mode for robot
                 targetIndex = unshotTiles[Math.floor(Math.random() * unshotTiles.length)];
             } else if (skillToUse === 'attack') { // Berserker's Sacrifice
-                // Only use if the robot is losing significantly
-                if ((playerData.hits?.length || 0) < 8) {
+                // Only use if the robot has taken some damage or is losing
+                const robotHitsSustained = robotData.hits?.length || 0;
+                const playerHitsDealt = playerData.hits?.length || 0;
+                if (robotHitsSustained < 5 && playerHitsDealt < 8) {
                     return null; // Don't use skill
                 }
             }
@@ -1370,11 +1514,15 @@ function robotConsiderAndUseSkill() {
 
     let isUltimateAnimating = false;
     const skillFunctions = {
-        military: { attack: useMilitaryCrossfire, utility: useMilitaryRadar, ultimate: useMilitaryNuke },
-        mages: { attack: useMageFireball, utility: useMageCrystalBall, ultimate: useMageArmageddon },
+        military: { attack: useMilitaryCrossfire, utility: useMilitaryUAV, ultimate: useMilitaryNuke },
+        mages: { attack: useMageFireball, utility: useMageTemporalRift, ultimate: useMageArmageddon },
         vikings: { attack: useVikingBerserker, utility: useVikingRavens, ultimate: useVikingJormungandr }
     };
-    const nonTargetedSkills = { mages: ['utility', 'ultimate'], vikings: ['attack', 'utility'] };
+    const nonTargetedSkills = {
+        mages: ['utility', 'ultimate'],
+        vikings: ['attack', 'utility'],
+        military: ['utility']
+    };
 
     const skillFn = skillFunctions[robotFaction]?.[skillToUse];
     if (skillFn) {
@@ -1432,26 +1580,54 @@ function robotTurn() {
 
     // 2. SEARCH MODE: If not hunting or hunt queue was empty, find a new target.
     if (robotState === 'searching') {
+        const myData = gameState.host;
+        const myShipObjects = myData.shipObjects || [];
+        const myHits = myData.hits || [];
+
+        // Find the smallest unsunk ship
+        const unsunkShipLengths = myShipObjects
+            .filter(ship => !ship.indices.every(index => myHits.includes(index)))
+            .map(ship => ship.length);
+        const smallestShipRemaining = unsunkShipLengths.length > 0 ? Math.min(...unsunkShipLengths) : 0;
+
         // Use a "checkerboard" pattern for more efficient searching
         let availableTiles = [];
         for (let i = 0; i < 100; i++) {
             const row = Math.floor(i / 10);
             const col = i % 10;
-            if ((row + col) % 2 === 0 && !robotShots.includes(i)) {
+            if ((row + col) % 2 === 0 && !robotShots.includes(i)) { // Prioritize even-parity tiles
                 availableTiles.push(i);
             }
         }
         // If no checkerboard tiles left, search all remaining tiles
         if (availableTiles.length === 0) {
-            for (let i = 0; i < 100; i++) {
-                if (!robotShots.includes(i)) {
-                    availableTiles.push(i);
+            availableTiles = Array.from({ length: 100 }, (_, i) => i).filter(i => !robotShots.includes(i));
+        }
+
+        let validSearchTiles = [];
+        if (smallestShipRemaining > 0) {
+            validSearchTiles = availableTiles.filter(tile => {
+                // Check horizontal possibilities that include 'tile'
+                for (let i = 0; i < smallestShipRemaining; i++) {
+                    const startPos = tile - i;
+                    // Ensure the potential start is on the same row as the tile it's supposed to contain
+                    if (Math.floor(startPos / 10) === Math.floor(tile / 10)) {
+                        if (isPlacementPossible(startPos, smallestShipRemaining, 'horizontal', robotShots)) return true;
+                    }
                 }
-            }
+                // Check vertical possibilities that include 'tile'
+                for (let i = 0; i < smallestShipRemaining; i++) {
+                    const startPos = tile - (i * 10);
+                    if (startPos >= 0) {
+                        if (isPlacementPossible(startPos, smallestShipRemaining, 'vertical', robotShots)) return true;
+                    }
+                }
+                return false;
+            });
         }
-        if (availableTiles.length > 0) {
-            shotIndex = availableTiles[Math.floor(Math.random() * availableTiles.length)];
-        }
+
+        const tilesToChooseFrom = validSearchTiles.length > 0 ? validSearchTiles : availableTiles;
+        if (tilesToChooseFrom.length > 0) shotIndex = tilesToChooseFrom[Math.floor(Math.random() * tilesToChooseFrom.length)];
     }
 
     // Failsafe if no index was found (e.g., all tiles shot)
@@ -1538,6 +1714,32 @@ function robotTurn() {
     applyOfflineUpdates(updates);
 }
 
+function updateUAVPanel() {
+    const myData = gameState[playerRole] || {};
+    const statusPanel = document.getElementById('ship-status-panel');
+    const statusContent = document.getElementById('ship-status-content');
+    const currentRound = gameState.roundCount || 0;
+    
+    // The panel is always visible if the skill has been activated.
+    if (!myData.uavActive) {
+        statusPanel.classList.add('hidden');
+        return;
+    }
+    statusPanel.classList.remove('hidden');
+
+    // Only update the content on even-numbered rounds.
+    if (currentRound % 2 === 0) {
+        const report = getEnemyShipStatus();
+        lastUAVReportHTML = report.map(ship => {
+            const status = ship.remaining === 0 ? 'SUNK' : `${ship.remaining}/${ship.total}`;
+            return `<div>${ship.name}: ${status}</div>`;
+        }).join('');
+    }
+
+    // Always display the last known report.
+    statusContent.innerHTML = lastUAVReportHTML || '<span>Scan data incoming...</span>';
+}
+
 function updateSkillsUI() {
     if (gameMode !== 'fantasy') return;
 
@@ -1546,7 +1748,18 @@ function updateSkillsUI() {
     const attackBtn = document.getElementById('skill-attack-btn');
     const utilityBtn = document.getElementById('skill-utility-btn');
     const ultimateBtn = document.getElementById('skill-ultimate-btn');
+    const debuffOverlay = document.getElementById('skill-debuff-overlay');
     
+    const myData = gameState[playerRole] || {};
+    const skillsAreDisabled = myData.skillsDisabled || false;
+    const riftOnCooldown = playerFaction === 'mages' && myData.riftCooldown > 0;
+
+    if (skillsAreDisabled) {
+        debuffOverlay.classList.remove('hidden');
+    } else {
+        debuffOverlay.classList.add('hidden');
+    }
+
     // Faction might not be set for opponent view, so default gracefully
     const factionName = playerFaction ? playerFaction.charAt(0).toUpperCase() + playerFaction.slice(1) : 'Player';
     let energyName = 'Energy';
@@ -1566,13 +1779,13 @@ function updateSkillsUI() {
     let skills = { attack: 'Attack', utility: 'Utility', ultimate: 'Ultimate' };
     switch (playerFaction) {
         case 'military':
-            skills = { attack: 'Crossfire', utility: 'Radar Scan', ultimate: 'Tactical Nuke' };
+            skills = { attack: 'Crossfire', utility: 'UAV Recon Drone', ultimate: 'Tactical Nuke' };
             break;
         case 'mages':
-            skills = { attack: 'Fireball', utility: 'Crystal Ball', ultimate: 'Armageddon' };
+            skills = { attack: 'Fireball', utility: 'Temporal Rift', ultimate: 'Armageddon' };
             break;
         case 'vikings':
-            skills = { attack: "Berserker's Sacrifice", utility: "Odin's Ravens", ultimate: "Jormungandr's Rage" };
+            skills = { attack: "Berserker's Sacrifice", utility: "Odin's Ravens", ultimate: "Jormungandr's Rage" }; // No change here
             break;
     }
 
@@ -1593,9 +1806,18 @@ function updateSkillsUI() {
         ultimateBtn.innerText = `${skills.ultimate} (${skillCosts.ultimate})`;
     }
 
-    attackBtn.disabled = playerEnergy < skillCosts.attack || !isMyTurn;
-    utilityBtn.disabled = playerEnergy < skillCosts.utility || !isMyTurn;
-    ultimateBtn.disabled = playerEnergy < skillCosts.ultimate || !isMyTurn;
+    attackBtn.disabled = skillsAreDisabled || playerEnergy < skillCosts.attack || !isMyTurn;
+    utilityBtn.disabled = skillsAreDisabled || playerEnergy < skillCosts.utility || !isMyTurn || riftOnCooldown;
+    ultimateBtn.disabled = skillsAreDisabled || playerEnergy < skillCosts.ultimate || !isMyTurn;
+
+    // NEW: Visual for Mage cooldown
+    if (riftOnCooldown) {
+        utilityBtn.classList.add('on-cooldown');
+        utilityBtn.dataset.cooldown = myData.riftCooldown;
+    } else {
+        utilityBtn.classList.remove('on-cooldown');
+    }
+
 }
 
 function updateTurnIndicator() {

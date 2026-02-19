@@ -45,17 +45,17 @@
                 <div class="faction-button-container">
                     <button data-faction="military" class="btn-secondary" onclick="selectFaction('military')">🪖Military</button>
                     <div class="faction-tooltip">
-                        <p><strong>Attack:</strong> Crossfire (+)</p>
-                        <p><strong>Utility:</strong> Radar Scan (5x5)</p>
-                        <p><strong>Ultimate:</strong> Tactical Nuke (5x5)</p>
+                        <p><strong>Attack:</strong> Crossfire</p>
+                        <p><strong>Utility:</strong> UAV Recon Drone</p>
+                        <p><strong>Ultimate:</strong> Tactical Nuke</p>
                     </div>
                 </div>
                 <div class="faction-button-container">
                     <button data-faction="mages" class="btn-secondary" onclick="selectFaction('mages')">🧙‍♂️ Mages</button>
                     <div class="faction-tooltip">
-                        <p><strong>Attack:</strong> Fireball (2x2)</p>
-                        <p><strong>Utility:</strong> Crystal Ball (1 Tile)</p>
-                        <p><strong>Ultimate:</strong> Armageddon (Random)</p>
+                        <p><strong>Attack:</strong> Fireball</p>
+                        <p><strong>Utility:</strong> Temporal Rift (Extra Turn)</p>
+                        <p><strong>Ultimate:</strong> Armageddon</p>
                     </div>
                 </div>
                 <div class="faction-button-container">
@@ -86,6 +86,8 @@
     </div>
 
 
+    <div id="status-timers-container"></div>
+
     <div id="game-arena" class="hidden">
         <div class="board-container">
             <h3>Your Fleet</h3>
@@ -98,11 +100,17 @@
                     <button id="skill-utility-btn" onclick="activateSkill('utility')">Utility</button>
                     <button id="skill-ultimate-btn" onclick="activateSkill('ultimate')">Ultimate</button>
                 </div>
+                <div id="skill-debuff-overlay" class="hidden"></div>
             </div>
         </div>
         <div class="board-container">
             <h3>Enemy Waters <span id="turn-indicator">(Wait)</span></h3>
             <div id="enemy-board" class="grid"></div>
+            <div id="enemy-board-overlay" class="hidden"></div>
+            <div id="ship-status-panel" class="hidden">
+                <h4>UAV REPORT</h4>
+                <div id="ship-status-content"></div>
+            </div>
         </div>
     </div>
 
